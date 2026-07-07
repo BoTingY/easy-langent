@@ -1444,10 +1444,10 @@ llm = ChatOpenAI(
 # ------------------------------
 class InteractiveOptState(TypedDict):
     user_input: str                # 固定：用户原始输入（全程不变）
-    optimized_text: Optional[str]  # 动态：AI优化后文本（多轮更新）
-    optimize_suggest: Optional[str]# 动态：优化建议/理由（多轮更新）
-    user_feedback: Optional[str]   # 动态：用户反馈（确认/修改/退出）
-    final_result: Optional[str]    # 最终：流程结束结果
+    optimized_text: Optional[str]  # 每轮覆盖：AI优化后文本（只保留最新一版）
+    optimize_suggest: Optional[str]# 每轮覆盖：优化建议/理由（只保留最新一版）
+    user_feedback: Optional[str]   # 每轮覆盖：用户反馈（确认/修改/退出）
+    final_result: Optional[str]    # 最终：流程结束时写入
 
 # ------------------------------
 # 3. 核心节点函数（无任何修改，保留你的原代码）
@@ -1485,7 +1485,7 @@ def optimize_node(state: InteractiveOptState) -> InteractiveOptState:
     }
 
 def feedback_node(state: InteractiveOptState) -> InteractiveOptState:
-    """【人机交互节点】展示结果+接收用户反馈，流程中断核心"""
+    """【人机交互节点】展示优化结果，接收用户操作和具体修改意见"""
     print("\n" + "-"*60)
     print("📝 AI优化后文本：")
     print(state["optimized_text"])
@@ -1494,21 +1494,25 @@ def feedback_node(state: InteractiveOptState) -> InteractiveOptState:
     print("\n" + "-"*60)
 
     while True:
-        user_feedback = input("请输入反馈（仅需输入：确认/修改/退出）：").strip()
-        if user_feedback in ["确认", "修改", "退出"]:
-            break
-        print("❌ 输入无效！请严格输入「确认」「修改」「退出」，无其他字符\n")
-    return {"user_feedback": user_feedback}
+        action = input("请选择操作（确认/修改/退出）：").strip()
+        if action == "确认" or action == "退出":
+            return {"user_feedback": action}
+        if action == "修改":
+            detail = input("请输入具体修改意见：").strip()
+            if detail:
+                return {"user_feedback": detail}
+            print("❌ 修改意见不能为空，请重新输入\n")
+        else:
+            print("❌ 请输入「确认」「修改」或「退出」\n")
 
 def feedback_router(state: InteractiveOptState) -> str:
-    """【条件路由节点】循环核心，直接返回目标节点名（最新API要求）"""
+    """【条件路由】确认→结束，退出→终止，其他内容都是修改意见→回到优化节点"""
     feedback = state["user_feedback"]
     if feedback == "确认":
-        return "final"    # 确认→final节点
-    elif feedback == "修改":
-        return "optimize" # 修改→optimize节点（循环核心）
-    else:
-        return "exit"     # 退出→exit节点
+        return "final"
+    if feedback == "退出":
+        return "exit"
+    return "optimize"
 
 def final_node(state: InteractiveOptState) -> InteractiveOptState:
     """【机器节点】流程正常结束，生成格式化结果"""
@@ -1611,28 +1615,30 @@ if __name__ == "__main__":
 LangGraph是一款优秀的工作流构建工具，相较于传统的Chain方案，其在功能与实用性上表现更为出色。
 
 💡 优化建议/理由：
-1. 将口语化、模糊的表达转化为具体、专业的表述，如将“不错”明确为“优秀”，“好用”具体化为“在功能与实用性上表现更为出色”。
+1. 将口语化、模糊的表达转化为具体、专业的表述，如将”不错”明确为”优秀”，”好用”具体化为”在功能与实用性上表现更为出色”。
 2. 优化了句子结构与逻辑关系，使对比更清晰、论述更流畅，提升了整体表达的严谨性。
 
 ------------------------------------------------------------
-请输入反馈（仅需输入：确认/修改/退出）：修改
-
-📝 AI优化后文本：
-LangGraph是一款优秀的工作流构建工具，相较于传统的Chain，它在功能与易用性上更具优势。
-
-💡 优化建议/理由：
-1. 用词更正式、具体，如“优秀的工作流构建工具”明确了核心功能。
-2. 通过对比突出优势，使表述更客观有力。
+请选择操作（确认/修改/退出）：修改
+请输入具体修改意见：语气太正式了，保持口语化风格，但让逻辑更清晰
 
 ------------------------------------------------------------
-请输入反馈（仅需输入：确认/修改/退出）：确认
+📝 AI优化后文本：
+LangGraph这个工具挺好用的，专门做工作流编排，比之前的Chain灵活不少，分支和循环都能搞定。
+
+💡 优化建议/理由：
+1. 保留了口语化风格（”挺好用””不少””搞定”），同时补充了具体优势点（”分支和循环”），让表达更有信息量。
+2. 用”灵活”替代模糊的”好用”，更准确地传达对比差异。
+
+------------------------------------------------------------
+请选择操作（确认/修改/退出）：确认
 
 ✅ 【多轮文本优化流程完成】
 📌 最终优化文本：
-LangGraph是一款优秀的工作流构建工具，相较于传统的Chain，它在功能与易用性上更具优势。
+LangGraph这个工具挺好用的，专门做工作流编排，比之前的Chain灵活不少，分支和循环都能搞定。
 💡 优化核心总结：
-1. 用词更正式、具体，如“优秀的工作流构建工具”明确了核心功能。
-2. 通过对比突出优势，使表述更客观有力。
+1. 保留了口语化风格（”挺好用””不少””搞定”），同时补充了具体优势点（”分支和循环”），让表达更有信息量。
+2. 用”灵活”替代模糊的”好用”，更准确地传达对比差异。
 ============================================================
 ```
 
